@@ -9,6 +9,8 @@ struct SchedulerState {
     last_run: HashMap<String, NaiveDate>,
 }
 
+const POOLING_INTERVAL_IN_SEC: u64 = 60;
+
 const DEFAULT_YAML_LOCATION: &str = "~/.config/task_scheduler/tasks.yml";
 
 #[derive(Parser)]
@@ -39,14 +41,14 @@ pub enum CmdTypes {
 }
 
 impl CmdTypes {
-    fn handle_cmd(&self) {
+    async fn handle_cmd(&self) {
         match self {
-            CmdTypes::Run { file_path: _ } => self.handle_run(),
-            CmdTypes::Update { file_path: _ } => self.handle_update(),
+            CmdTypes::Run { file_path: _ } => self.handle_run().await,
+            CmdTypes::Update { file_path: _ } => self.handle_update().await,
         }
     }
 
-    fn handle_run(&self) {
+    async fn handle_run(&self) {
         let CmdTypes::Run { file_path } = self else {
             unreachable!();
         };
@@ -65,10 +67,12 @@ impl CmdTypes {
         };
     }
 
-    fn handle_update(&self) {}
+    async fn handle_update(&self) {}
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt::init();
     CliCommands::parse().cmd.handle_cmd();
 }
 
