@@ -4,6 +4,12 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::Result;
 use std::collections::HashMap;
 
+macro_rules! get_interval {
+    () => {
+        tokio::time::interval(std::time::Duration::from_secs(POOLING_INTERVAL_IN_SEC))
+    };
+}
+
 struct SchedulerState {
     tasks: Vec<Task>,
     last_run: HashMap<String, NaiveDate>,
@@ -54,17 +60,9 @@ impl CmdTypes {
         };
 
         let file_path = file_path.as_deref().unwrap_or(DEFAULT_YAML_LOCATION);
+        let tasks = load_tasks(file_path);
 
-        let content = std::fs::read_to_string(&file_path)
-            .expect(&format!("Failed to read file: {}", file_path));
-
-        let serde_content: Vec<Task> = match serde_yaml::from_str(&content) {
-            Ok(tasks) => tasks,
-            Err(e) => {
-                eprintln!("Failed to parse YAML: {}", e);
-                return;
-            }
-        };
+        let mut interval = get_interval!();
     }
 
     async fn handle_update(&self) {}
@@ -74,6 +72,19 @@ impl CmdTypes {
 async fn main() {
     tracing_subscriber::fmt::init();
     CliCommands::parse().cmd.handle_cmd();
+}
+
+fn load_tasks(file_path: &str) -> Vec<Task> {
+    let content =
+        std::fs::read_to_string(&file_path).expect(&format!("Failed to read file: {}", file_path));
+
+    match serde_yaml::from_str(&content) {
+        Ok(tasks) => return tasks,
+        Err(e) => {
+            tracing::error!("Failed to parse YAML: {}", e);
+            std::process::exit(1);
+        }
+    };
 }
 
 fn parse_hr(s: &str) -> NaiveTime {
