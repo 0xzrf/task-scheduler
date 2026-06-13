@@ -1,0 +1,14 @@
+- exec_path: /usr/local/bin/backup.sh
+  from_hr: "09:00"
+  to_hr: "17:00"
+  daily: true
+
+- exec_path: /usr/bin/caffeinate
+  from_hr: "08:30"
+  to_hr: "18:00"
+  daily: false
+
+- exec_path: ./scripts/cleanup
+  from_hr: "00:00"
+  to_hr: "23:59"
+  daily: true
