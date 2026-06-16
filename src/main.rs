@@ -1,9 +1,12 @@
 use chrono::{Local, NaiveDate, NaiveTime};
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-use serde_yaml::Result;
 use std::collections::HashMap;
 use tokio::{process::Command, time::Interval};
+
+const POOLING_INTERVAL_IN_SEC: u64 = 5;
+const DEFAULT_YAML_LOCATION: &str = "~/.config/task_scheduler/tasks.yml";
+const DEFAULT_ERR_OUT_LOCATION: &str = "~/.config/task_scheduler/error.log";
 
 macro_rules! get_interval {
     () => {
@@ -33,12 +36,15 @@ impl SchedulerState {
     pub fn is_first_scheduled_run(&self) -> bool {
         self.last_run.is_empty()
     }
+
+    pub fn is_task_done_for_today(&self, task_id: usize) -> bool {
+        let today = Local::now().naive_local().date();
+        match self.last_run.get(&task_id) {
+            Some(last_run_date) => *last_run_date == today,
+            None => false,
+        }
+    }
 }
-
-const POOLING_INTERVAL_IN_SEC: u64 = 60;
-
-const DEFAULT_YAML_LOCATION: &str = "~/.config/task_scheduler/tasks.yml";
-const DEFAULT_ERR_OUT_LOCATION: &str = "~/.config/task_scheduler/error.txt";
 
 #[derive(Parser)]
 pub struct CliCommands {
@@ -70,6 +76,7 @@ pub enum CmdTypes {
 
 impl CmdTypes {
     async fn handle_cmd(&self) {
+        println!("running handle cmd");
         match self {
             CmdTypes::Run { file_path: _ } => self.handle_run().await,
             CmdTypes::Update { file_path: _ } => self.handle_update().await,
@@ -77,6 +84,7 @@ impl CmdTypes {
     }
 
     async fn handle_run(&self) {
+        println!("running handle run");
         let CmdTypes::Run { file_path } = self else {
             unreachable!();
         };
@@ -86,7 +94,7 @@ impl CmdTypes {
 
         let mut schedule_state = SchedulerState::new(tasks, file_path.to_string());
 
-        let mut interval = get_interval!();
+        let interval = get_interval!();
 
         execute_tasks(&mut schedule_state, interval).await;
     }
@@ -97,13 +105,13 @@ impl CmdTypes {
 async fn execute_tasks(schedule_state: &mut SchedulerState, mut interval: Interval) {
     let tasks = &schedule_state.tasks;
     loop {
-        interval.tick();
+        interval.tick().await;
         for (task_id, task) in tasks.iter().enumerate() {
             if !schedule_state.last_run.get(&task_id).is_none() {
                 continue;
             }
 
-            if !task.is_in_window() {
+            if !task.is_in_window() || schedule_state.is_task_done_for_today(task_id) {
                 continue;
             }
 
@@ -129,8 +137,6 @@ async fn error(msg: &str) {
     use tokio::fs::OpenOptions;
     use tokio::io::AsyncWriteExt;
 
-    // You may need to define this constant elsewhere if not already defined.
-    // const DEFAULT_ERR_OUT_LOCATION: &str = "error.log";
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -149,7 +155,7 @@ async fn error(msg: &str) {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    CliCommands::parse().cmd.handle_cmd();
+    CliCommands::parse().cmd.handle_cmd().await;
 }
 
 fn load_tasks(file_path: &str) -> Vec<Task> {
