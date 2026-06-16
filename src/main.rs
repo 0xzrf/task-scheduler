@@ -16,7 +16,7 @@ macro_rules! get_interval {
 
 struct SchedulerState {
     tasks: Vec<Task>,
-    last_run: HashMap<u8, NaiveDate>,
+    last_run: HashMap<usize, NaiveDate>,
     target_config: String, // path to the config
 }
 
@@ -84,22 +84,22 @@ impl CmdTypes {
         let file_path = file_path.as_deref().unwrap_or(DEFAULT_YAML_LOCATION);
         let tasks = load_tasks(file_path);
 
-        let schedule_state = SchedulerState::new(tasks, file_path.to_string());
+        let mut schedule_state = SchedulerState::new(tasks, file_path.to_string());
 
         let mut interval = get_interval!();
 
-        execute_tasks(&schedule_state, interval).await;
+        execute_tasks(&mut schedule_state, interval).await;
     }
 
     async fn handle_update(&self) {}
 }
 
-async fn execute_tasks(schedule_state: &SchedulerState, interval: Interval) {
+async fn execute_tasks(schedule_state: &mut SchedulerState, mut interval: Interval) {
     let tasks = &schedule_state.tasks;
     loop {
         interval.tick();
         for (task_id, task) in tasks.iter().enumerate() {
-            if !schedule_state.last_run.get(&task_id.into()).is_none() {
+            if !schedule_state.last_run.get(&task_id).is_none() {
                 continue;
             }
 
@@ -108,16 +108,19 @@ async fn execute_tasks(schedule_state: &SchedulerState, interval: Interval) {
             }
 
             let task_exec_path = task.exec_path.as_str();
-            let status = Command::new(task_exec_path).status().await?;
+            let status = Command::new(task_exec_path).status().await.unwrap();
 
             if !status.success() {
                 let msg = format!("script failed to run: {task_exec_path}");
-                tracing::error!(&msg);
+                tracing::error!("{}", &msg);
                 error(&msg).await;
                 continue;
             }
 
             // put it as done for the day
+            schedule_state
+                .last_run
+                .insert(task_id, Local::now().naive_local().date());
         }
     }
 }
