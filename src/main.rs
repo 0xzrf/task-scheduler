@@ -54,7 +54,8 @@ pub struct Task {
 }
 
 impl Task {
-    fn is_in_window(&self, now: NaiveTime) -> bool {
+    fn is_in_window(&self) -> bool {
+        let now = Local::now().time();
         let from = parse_hr(&self.from_hr);
         let to = parse_hr(&self.to_hr);
         now >= from && now <= to
@@ -98,6 +99,14 @@ async fn execute_tasks(schedule_state: &SchedulerState, interval: Interval) {
     loop {
         interval.tick();
         for (task_id, task) in tasks.iter().enumerate() {
+            if !schedule_state.last_run.get(&task_id.into()).is_none() {
+                continue;
+            }
+
+            if !task.is_in_window() {
+                continue;
+            }
+
             let task_exec_path = task.exec_path.as_str();
             let status = Command::new(task_exec_path).status().await?;
 
@@ -105,7 +114,10 @@ async fn execute_tasks(schedule_state: &SchedulerState, interval: Interval) {
                 let msg = format!("script failed to run: {task_exec_path}");
                 tracing::error!(&msg);
                 error(&msg).await;
+                continue;
             }
+
+            // put it as done for the day
         }
     }
 }
