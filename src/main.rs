@@ -3,21 +3,42 @@ use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Result;
 use std::collections::HashMap;
+use tokio::time::Interval;
 
 macro_rules! get_interval {
     () => {
         tokio::time::interval(std::time::Duration::from_secs(POOLING_INTERVAL_IN_SEC))
     };
+    ($secs:expr) => {
+        tokio::time::interval(std::time::Duration::from_secs($secs))
+    };
 }
 
 struct SchedulerState {
     tasks: Vec<Task>,
-    last_run: HashMap<String, NaiveDate>,
+    last_run: HashMap<u8, NaiveDate>,
+    target_config: String, // path to the config
+}
+
+impl SchedulerState {
+    pub fn new(tasks: Vec<Task>, target_config: String) -> Self {
+        assert_ne!(tasks.len(), 0); // shouldn't have 0 tasks
+        Self {
+            tasks,
+            last_run: HashMap::new(),
+            target_config,
+        }
+    }
+
+    pub fn is_first_scheduled_run(&self) -> bool {
+        self.last_run.is_empty()
+    }
 }
 
 const POOLING_INTERVAL_IN_SEC: u64 = 60;
 
 const DEFAULT_YAML_LOCATION: &str = "~/.config/task_scheduler/tasks.yml";
+const DEFAULT_ERR_OUT_LOCATION: &str = "~/.config/task_scheduler/error.txt";
 
 #[derive(Parser)]
 pub struct CliCommands {
@@ -62,10 +83,20 @@ impl CmdTypes {
         let file_path = file_path.as_deref().unwrap_or(DEFAULT_YAML_LOCATION);
         let tasks = load_tasks(file_path);
 
+        let schedule_state = SchedulerState::new(tasks, file_path.to_string());
+
         let mut interval = get_interval!();
+
+        execute_tasks(&schedule_state, interval).await;
     }
 
     async fn handle_update(&self) {}
+}
+
+async fn execute_tasks(schedule_state: &SchedulerState, interval: Interval) {
+    loop {
+        interval.tick();
+    }
 }
 
 #[tokio::main]
