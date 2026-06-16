@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::{process::Command, time::Interval};
 
-const POOLING_INTERVAL_IN_SEC: u64 = 5;
+const POOLING_INTERVAL_IN_SEC: u64 = 60;
 const DEFAULT_YAML_LOCATION: &str = "~/.config/task_scheduler/tasks.yml";
 const DEFAULT_ERR_OUT_LOCATION: &str = "~/.config/task_scheduler/error.log";
 
@@ -76,7 +76,6 @@ pub enum CmdTypes {
 
 impl CmdTypes {
     async fn handle_cmd(&self) {
-        println!("running handle cmd");
         match self {
             CmdTypes::Run { file_path: _ } => self.handle_run().await,
             CmdTypes::Update { file_path: _ } => self.handle_update().await,
@@ -84,7 +83,6 @@ impl CmdTypes {
     }
 
     async fn handle_run(&self) {
-        println!("running handle run");
         let CmdTypes::Run { file_path } = self else {
             unreachable!();
         };
@@ -107,11 +105,8 @@ async fn execute_tasks(schedule_state: &mut SchedulerState, mut interval: Interv
     loop {
         interval.tick().await;
         for (task_id, task) in tasks.iter().enumerate() {
-            if !schedule_state.last_run.get(&task_id).is_none() {
-                continue;
-            }
-
             if !task.is_in_window() || schedule_state.is_task_done_for_today(task_id) {
+                println!("skipping task: {}", task.exec_path);
                 continue;
             }
 
