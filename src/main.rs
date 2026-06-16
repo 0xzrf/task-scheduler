@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Result;
 use std::collections::HashMap;
-use tokio::time::Interval;
+use tokio::{process::Command, time::Interval};
 
 macro_rules! get_interval {
     () => {
@@ -94,9 +94,41 @@ impl CmdTypes {
 }
 
 async fn execute_tasks(schedule_state: &SchedulerState, interval: Interval) {
+    let tasks = &schedule_state.tasks;
     loop {
         interval.tick();
+        for (task_id, task) in tasks.iter().enumerate() {
+            let task_exec_path = task.exec_path.as_str();
+            let status = Command::new(task_exec_path).status().await?;
+
+            if !status.success() {
+                let msg = format!("script failed to run: {task_exec_path}");
+                tracing::error!(&msg);
+                error(&msg).await;
+            }
+        }
     }
+}
+
+async fn error(msg: &str) {
+    use tokio::fs::OpenOptions;
+    use tokio::io::AsyncWriteExt;
+
+    // You may need to define this constant elsewhere if not already defined.
+    // const DEFAULT_ERR_OUT_LOCATION: &str = "error.log";
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(DEFAULT_ERR_OUT_LOCATION)
+        .await
+        .expect("failed to open error file");
+
+    file.write_all(msg.as_bytes())
+        .await
+        .expect("failed to write error message");
+    file.write_all(b"\n")
+        .await
+        .expect("failed to write newline");
 }
 
 #[tokio::main]
